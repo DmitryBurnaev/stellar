@@ -1,0 +1,150 @@
+import os
+from typing import Any, Callable, cast
+from unittest.mock import patch
+
+import pytest
+from pydantic import SecretStr
+
+from src.settings import AppSettings, get_app_settings
+from src.settings.log import JSON_LOG_FORMAT, LOG_LEVELS_PATTERN, LogSettings
+
+MINIMAL_ENV_VARS = {
+    "APP_SECRET_KEY": "test-key",
+    "ADMIN_PASSWORD": "test-password",
+    "VENDOR_ENCRYPTION_KEY": "test-encryption-key",
+}
+
+
+def settings_without_dotenv(**values: Any) -> AppSettings:
+    # Pydantic's generated initializer type omits BaseSettings' supported _env_file override.
+    constructor = cast(Callable[..., AppSettings], AppSettings)
+    return constructor(_env_file=None, **values)
+
+
+class TestAppSettings:
+    @patch.dict(os.environ, MINIMAL_ENV_VARS, clear=True)
+    def test_default_settings(self) -> None:
+        get_app_settings.cache_clear()
+        settings = settings_without_dotenv()
+        assert settings.api_docs_enabled is False
+        assert settings.app_host == "localhost"
+        assert settings.app_port == 8003
+        assert settings.app_secret_key.get_secret_value() == "test-key"
+        assert settings.log.level == "INFO"
+        assert settings.jwt_algorithm == "HS256"
+        assert settings.admin.username == "admin"
+        assert settings.admin.session_expiration_time == 2 * 24 * 3600
+        assert settings.web.session_cookie_name == "stellar_web_session"
+        assert settings.web.session_expiration_time == 2 * 24 * 3600
+        assert settings.web.session_https_only is True
+
+    def test_app_version_defaults_to_develop(self) -> None:
+        settings = settings_without_dotenv(
+            app_secret_key=SecretStr("test-key"),
+        )
+
+        assert settings.app_version == "develop"
+
+    @patch.dict(
+        os.environ,
+        MINIMAL_ENV_VARS | {"DOCKER_IMAGE": "registry:5000/stellar:v1.2.3"},
+        clear=True,
+    )
+    def test_app_version_uses_docker_image_tag(self) -> None:
+        settings = settings_without_dotenv(
+            app_secret_key=SecretStr("test-key"),
+        )
+
+        assert settings.app_version == "v1.2.3"
+
+    @patch.dict(os.environ, MINIMAL_ENV_VARS | {"DOCKER_IMAGE": "stellar"}, clear=True)
+    def test_app_version_uses_latest_for_untagged_image(self) -> None:
+        settings = settings_without_dotenv(
+            app_secret_key=SecretStr("test-key"),
+        )
+
+        assert settings.app_version == "latest"
+
+    @patch.dict(os.environ, MINIMAL_ENV_VARS | {"APP_VERSION": "v2.0.0"}, clear=True)
+    def test_explicit_app_version_takes_precedence(self) -> None:
+        settings = settings_without_dotenv(
+            app_secret_key=SecretStr("test-key"),
+        )
+
+        assert settings.app_version == "v2.0.0"
+
+    @pytest.mark.parametrize("log_level", LOG_LEVELS_PATTERN.split("|"))
+    def test_valid_log_levels(self, log_level: str) -> None:
+        settings = AppSettings(
+            app_secret_key=SecretStr("test-token"),
+            log=LogSettings(level=log_level),
+        )
+        assert settings.log.level == log_level.upper()
+
+    def test_invalid_log_level(self) -> None:
+        with pytest.raises(ValueError):
+            AppSettings(
+                app_secret_key=SecretStr("test-secret"),
+                log=LogSettings(level="INVALID"),
+            )
+
+    def test_log_config(self) -> None:
+        settings = AppSettings(
+            app_secret_key=SecretStr("test-token"),
+            log=LogSettings(level="DEBUG"),
+        )
+        log_config = settings.log.dict_config
+        assert log_config["version"] == 1
+        assert "standard" in log_config["formatters"]
+        assert "console" in log_config["handlers"]
+        assert all(
+            logger in log_config["loggers"]
+            for logger in ["src", "fastapi", "uvicorn.access", "uvicorn.error"]
+        )
+        assert all(
+            log_config["loggers"][logger]["level"] == "DEBUG"
+            for logger in ["src", "fastapi", "uvicorn.access", "uvicorn.error"]
+        )
+
+    def test_log_config_supports_json_format_alias(self) -> None:
+        settings = AppSettings(
+            app_secret_key=SecretStr("test-token"),
+            log=LogSettings(level="DEBUG", format="json"),
+        )
+        log_config = settings.log.dict_config
+        assert log_config["formatters"]["standard"]["format"] == JSON_LOG_FORMAT
+
+
+class TestGetSettings:
+    @patch.dict(
+        os.environ,
+        MINIMAL_ENV_VARS
+        | {
+            "LOG_LEVEL": "DEBUG",
+            "APP_HOST": "0.0.0.0",
+            "APP_PORT": "8081",
+            "HTTP_PROXY_URL": "socks5://127.0.0.1:8080",
+            "FLAG_OFFLINE_MODE": "true",
+            "WEB_SESSION_HTTPS_ONLY": "false",
+        },
+    )
+    def test_get_app_settings_from_env(self) -> None:
+        get_app_settings.cache_clear()
+        settings = get_app_settings()
+        assert settings.log.level == "DEBUG"
+        assert settings.app_host == "0.0.0.0"
+        assert settings.app_port == 8081
+        assert settings.web.session_https_only is False
+
+    @patch.dict(os.environ, MINIMAL_ENV_VARS | {"LOG_LEVEL": "INVALID"})
+    def test_get_app_settings_validation_error(self) -> None:
+        get_app_settings.cache_clear()
+        with pytest.raises(Exception):
+            get_app_settings()
+
+    @patch.dict(os.environ, MINIMAL_ENV_VARS)
+    def test_get_app_settings_caching(self) -> None:
+        get_app_settings.cache_clear()
+        settings1 = get_app_settings()
+        settings2 = get_app_settings()
+        assert settings1 is settings2  # Same object due to caching

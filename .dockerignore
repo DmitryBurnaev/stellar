@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!etc/
+!etc/docker-entrypoint
+!src/
+!src/**
+**/__pycache__
+**/*.py[cod]
+**/.DS_Store
+**/.env*
+**/.ssh
+**/.ssh/**

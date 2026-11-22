@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+case "${APP_SERVICE:-app}" in
+    app)
+        : "${DB_PASSWORD:?Set DB_PASSWORD}"
+        : "${APP_SECRET_KEY:?Set APP_SECRET_KEY}"
+        alembic upgrade head
+        exec uvicorn --factory src.main:make_app --host 0.0.0.0 --port "${APP_PORT:-8000}" --loop uvloop
+        ;;
+    test)
+        alembic upgrade head
+        exec pytest -o cache_dir=/tmp/stellar-pytest
+        ;;
+    lint)
+        ruff check .
+        black --check src
+        exec mypy .
+        ;;
+    *)
+        echo "Unsupported APP_SERVICE" >&2
+        exit 1
+        ;;
+esac

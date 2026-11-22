@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "snippets/icons.html" import icon_activity %}
+
+{% block content %}
+<section class="page-heading">
+    <h1>System overview</h1>
+</section>
+
+<section class="status-card" aria-label="Control panel status">
+    <span class="card-icon">{{ icon_activity("icon") }}</span>
+    <div class="status-details">
+        <h2>Control panel</h2>
+        <p>Stellar served this page and verified your session against PostgreSQL.</p>
+    </div>
+    <span class="status-value">Online</span>
+</section>
+
+{% if feature_access.can_access_system_api %}
+<section class="api-card" aria-labelledby="system-api-title">
+    <h2 id="system-api-title">System health API</h2>
+    <p>Use a bearer token to check the control panel from a monitoring client.</p>
+    <code>GET /api/system/health/</code>
+</section>
+{% endif %}
+{% endblock %}
