@@ -1,0 +1,73 @@
+name: stellar
+
+x-postgres: &postgres
+  image: postgres:17-alpine
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+    interval: 2s
+    timeout: 3s
+    retries: 20
+
+services:
+  app:
+    image: ${DOCKER_IMAGE:-stellar:local}
+    build:
+      context: .
+      target: service
+    ports:
+      - "127.0.0.1:${APP_PORT:-8003}:${APP_PORT:-8003}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_PORT: ${APP_PORT:-8003}
+      DB_HOST: ${DB_HOST:-db}
+      DOCKER_IMAGE: ${DOCKER_IMAGE:-stellar:local}
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  db:
+    <<: *postgres
+    profiles: [local-storage]
+    environment:
+      POSTGRES_DB: ${DB_NAME:-stellar}
+      POSTGRES_USER: ${DB_USER:-stellar}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  test-db:
+    <<: *postgres
+    profiles: [test]
+    environment:
+      POSTGRES_DB: stellar_test
+      POSTGRES_USER: stellar_test
+      POSTGRES_PASSWORD: stellar_test
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  test:
+    profiles: [test]
+    image: ${TEST_DOCKER_IMAGE:-stellar:test}
+    build:
+      context: .
+      target: tests
+    environment:
+      APP_SERVICE: test
+      ADMIN_PASSWORD: test-only-stellar-admin
+      DB_HOST: test-db
+      DB_NAME: stellar_test
+      DB_USER: stellar_test
+      DB_PASSWORD: stellar_test
+      TEST_POSTGRES_MIGRATIONS: "1"
+      E2E_POSTGRES_HOST: test-db
+      E2E_POSTGRES_USER: stellar_test
+      E2E_POSTGRES_PASSWORD: stellar_test
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+volumes:
+  postgres:

@@ -1,0 +1,228 @@
+import dataclasses
+import uuid
+import hashlib
+import datetime
+from typing import NamedTuple, TypeAlias
+
+import jwt
+from fastapi import Security
+from fastapi.security import APIKeyHeader
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
+
+from src.settings import SettingsDep
+from src.db.models import User
+from src.db.repositories import TokenRepository
+from src.db.services import SASessionUOW, logger
+
+__all__ = (
+    "make_api_token",
+    "hash_token",
+    "verify_api_token",
+)
+
+JWT_PAYLOAD_RAW_T: TypeAlias = dict[str, str | int | datetime.datetime]
+
+
+class GeneratedToken(NamedTuple):
+    value: str
+    hashed_value: str
+
+
+class AuthenticatedAPIToken(NamedTuple):
+    value: str
+    user: User | None
+
+
+@dataclasses.dataclass
+class JWTPayload:
+    sub: str
+    exp: datetime.datetime | None = None
+
+    def as_dict(self) -> JWT_PAYLOAD_RAW_T:
+        return dataclasses.asdict(self)
+
+
+def jwt_encode(
+    payload: JWTPayload,
+    settings: SettingsDep,
+    expires_at: datetime.datetime | None = None,
+) -> str:
+    """
+    Generates signed JWT token with specified expiration datetime.
+    """
+    payload.exp = expires_at or datetime.datetime.max
+    encrypted_token = jwt.encode(
+        payload.as_dict(),
+        key=settings.app_secret_key.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+    )
+    return encrypted_token
+
+
+def jwt_decode(jwt_token: str, settings: SettingsDep) -> JWTPayload:
+    """
+    Returns decoded JWT payload.
+    """
+    payload: JWT_PAYLOAD_RAW_T = jwt.decode(
+        jwt_token,
+        settings.app_secret_key.get_secret_value(),
+        algorithms=[settings.jwt_algorithm],
+        options={"require": ["exp", "sub"]},
+    )
+    exp = payload["exp"]
+    if not isinstance(exp, (int, float)):
+        raise jwt.InvalidTokenError("Invalid expiration time")
+
+    try:
+        expires_at = datetime.datetime.fromtimestamp(exp, tz=datetime.timezone.utc)
+    except (ValueError, OverflowError, OSError):
+        raise jwt.InvalidTokenError("Invalid expiration time") from None
+    return JWTPayload(sub=str(payload["sub"]), exp=expires_at)
+
+
+def make_api_token(
+    expires_at: datetime.datetime | None,
+    settings: SettingsDep,
+) -> GeneratedToken:
+    """
+    Generates token, and it hashed value (requires for storage).
+    Token is a custom formatted JWT token (without header part).
+
+    Removing header allows simplifying token usage by client.
+    For verification, we can use just payload part and signature part.
+
+    Parameters:
+        expires_at: datetime.datetime - expiration time of the token
+        settings: Current settings
+
+    Returns:
+        TokenInfo - tuple of token and its hashed value
+    """
+    expires_at = expires_at or datetime.datetime.max
+    # just random id, that will be hashed to retrieve from DB in an auth process
+    token_identifier = uuid.uuid4().hex
+    encrypted_token = jwt_encode(
+        payload=JWTPayload(sub=token_identifier, exp=expires_at),
+        expires_at=expires_at,
+        settings=settings,
+    )
+    _, payload_part, signature_part = encrypted_token.split(".")
+    sign_len_prefix = f"{len(signature_part):0>3}"
+    result_value = f"{payload_part}{signature_part}{sign_len_prefix}"
+
+    return GeneratedToken(value=result_value, hashed_value=hash_token(token_identifier))
+
+
+def decode_api_token(token: str, settings: SettingsDep) -> JWTPayload:
+    """
+    Decodes custom formatted JWT token (without header part).
+
+    Note: token doesn't contain header part + it has a prefix with the length of the signature part.
+    Example of generated token:
+        daszAuxGG7vnhek8EPXT3Blbsign123456789g049
+    Where:
+        049 - length of the signature part (at the end of string)
+        daszAuxuGG7vnhek8EPXT3Blbsignature - payload part
+        sign123456789g - signature part
+
+    Parameters:
+        token: str - token to decode
+        settings: AppSettings - settings instance
+
+    Returns:
+        PayloadTokenInfo - payload of the token
+    """
+    just_for_header_token = jwt_encode(payload=JWTPayload(sub="example"), settings=settings)
+    header_part, _, _ = just_for_header_token.split(".")
+    token, sign_len_prefix = token[:-3], token[-3:]  # last 3 symbols contain len of signature
+    if (
+        len(sign_len_prefix) != 3
+        or not sign_len_prefix.isascii()
+        or not sign_len_prefix.isdecimal()
+    ):
+        raise HTTPException(status_code=401, detail="Invalid token signature")
+
+    signature_length = int(sign_len_prefix)
+    if not 0 < signature_length < len(token):
+        raise HTTPException(status_code=401, detail="Invalid token signature")
+    payload_part, signature_part = token[:-signature_length], token[-signature_length:]
+
+    checking_token = f"{header_part}.{payload_part}.{signature_part}"
+
+    try:
+        payload = jwt_decode(checking_token, settings=settings)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return payload
+
+
+def hash_token(token: str) -> str:
+    """
+    Hashes token and returns hashed value.
+
+    Parameters:
+        token: str - token to hash
+
+    Returns:
+        str - hashed value of the token (SHA-512)
+    """
+    return hashlib.sha512(token.encode()).hexdigest()
+
+
+async def authenticate_api_token(
+    request: Request,
+    settings: SettingsDep,
+    auth_token: str | None = Security(APIKeyHeader(name="Authorization", auto_error=False)),
+) -> AuthenticatedAPIToken:
+    """
+    Dependency for authentication by API token (placed in the header 'Authorization').
+    Skip verification for OPTIONS methods.
+    """
+
+    if request.method == "OPTIONS":
+        return AuthenticatedAPIToken("", None)
+
+    auth_token = (auth_token or "").strip()
+    if auth_token.lower() == "bearer":
+        auth_token = ""
+    if auth_token.lower().startswith("bearer "):
+        auth_token = auth_token[7:].strip()
+    if not auth_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    decoded_payload = decode_api_token(auth_token, settings=settings)
+    raw_token_identity = decoded_payload.sub
+    if not raw_token_identity:
+        raise HTTPException(status_code=401, detail="Not authenticated: token has no identity")
+
+    hashed_token = hash_token(raw_token_identity)
+
+    async with SASessionUOW() as uow:
+        token = await TokenRepository(session=uow.session).get_by_token(hashed_token)
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated: unknown token")
+
+    if not token.is_active:
+        raise HTTPException(status_code=401, detail="Not authenticated: inactive token")
+
+    if not token.user.is_active:
+        raise HTTPException(status_code=401, detail="Not authenticated: user is not active")
+
+    logger.debug("[auth] Verified token for %(user)s", {"user": token.user})
+
+    return AuthenticatedAPIToken(auth_token, token.user)
+
+
+async def verify_api_token(
+    request: Request,
+    settings: SettingsDep,
+    auth_token: str | None = Security(APIKeyHeader(name="Authorization", auto_error=False)),
+) -> str:
+    """Keep the token verification interface for callers needing the token value."""
+    authentication = await authenticate_api_token(request, settings, auth_token)
+    return authentication.value

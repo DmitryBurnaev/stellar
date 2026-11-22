@@ -1,0 +1,43 @@
+import logging
+import datetime
+from typing import ClassVar, TypeAlias
+
+from sqladmin import ModelView, BaseView
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
+from starlette.responses import Response
+from src.modules.auth.permissions import Permission
+
+logger = logging.getLogger(__name__)
+FormDataType: TypeAlias = dict[str, str | int | datetime.datetime | None]
+__all__ = ("BaseModelView",)
+
+
+class BaseAPPView(BaseView):
+    """Base for custom admin pages that declare a feature permission."""
+
+    required_permission: ClassVar[Permission]
+
+
+class BaseModelView(ModelView):
+    """Extended version of ModelView with extra settings and logic across all our views"""
+
+    required_permission: ClassVar[Permission]
+    can_export = False
+    is_async = True
+    custom_post_create: ClassVar[bool] = False
+
+    async def handle_post_create(self, request: Request, object_id: int) -> Response:
+        if not self.custom_post_create:
+            raise HTTPException(status_code=400, detail="Missing handle_post_create logic")
+
+        request.scope["path_params"] = request.path_params | {"pk": object_id}
+        model = await self.get_object_for_details(request=request)
+        if not model:
+            raise HTTPException(status_code=404, detail=f"Object #{object_id} not found")
+
+        context = {"model_view": self, "model": model, "title": self.name}
+
+        response = await self.templates.TemplateResponse(request, self.details_template, context)
+        response.headers["Cache-Control"] = "no-store"
+        return response

@@ -1,0 +1,125 @@
+from typing import Any, cast
+
+from jinja2 import FileSystemLoader
+from sqladmin import Admin, BaseView, ModelView
+from sqladmin.authentication import login_required
+from starlette.datastructures import FormData, URL
+from starlette.requests import Request
+from starlette.responses import Response
+
+from src.modules.admin.auth import AdminAuth
+from src.modules.admin.authorization import FeatureAuthorization
+from src.application import StellarAPP
+from src.constants import APP_DIR
+from src.modules.admin.utils import get_current_error_alert
+from src.modules.admin.views import BaseAPPView, BaseModelView, UserAdminView, TokenAdminView
+from src.db import session as db_session
+from src.modules.auth.permissions import Permission
+
+ADMIN_VIEWS: tuple[type[BaseView], ...] = (UserAdminView, TokenAdminView)
+
+
+class AdminApp(Admin):
+    """Stellar administration panel."""
+
+    custom_templates_dir = "modules/admin/templates"
+    app: "StellarAPP"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["authorization_backend"] = FeatureAuthorization()
+        super().__init__(*args, **kwargs)
+        self.admin.state.access_controller = self
+        self.admin.state.settings = self.app.settings
+        self._init_jinja_templates()
+        self._register_views()
+
+    @login_required
+    async def index(self, request: Request) -> Response:
+        """Index route which can be overridden to create dashboards."""
+        return await self.templates.TemplateResponse(request, "dashboard.html")
+
+    @login_required
+    async def create(self, request: Request) -> Response:
+        response: Response = await super().create(request)
+        if request.method == "GET":
+            return response
+
+        if response.status_code != 302:
+            return response
+
+        # ==== prepare custom logic ====
+        identity = request.path_params["identity"]
+        model_view: "BaseModelView" = cast("BaseModelView", self._find_model_view(identity))
+        if model_view.custom_post_create:
+            object_id = int(response.headers["location"])
+            response = await model_view.handle_post_create(request, object_id)
+        # ====
+
+        return response
+
+    @staticmethod
+    def get_save_redirect_url(
+        request: Request,
+        form: FormData,
+        model_view: ModelView,
+        obj: Any,
+    ) -> str | URL:
+        """
+        Make more flexable getting redirect URL after saving model instance
+        Allows fetching created instance's ID from formed redirect response (location header)
+        We have to do this to avoid overriding whole `create` method of this class
+        """
+
+        redirect_url: str | URL
+        if isinstance(model_view, BaseModelView) and model_view.custom_post_create:
+            # required for getting instance ID after base creation's method finished
+            redirect_url = str(obj.id)
+        else:
+            redirect_url = Admin.get_save_redirect_url(request, form, model_view, obj)
+
+        return redirect_url
+
+    def _init_jinja_templates(self) -> None:
+        """
+        Init jinja templates.
+        Note: we have to insert loader in the start of list in order to override default templates
+        """
+        templates_dir = APP_DIR / self.custom_templates_dir
+        self.templates.env.loader.loaders.insert(0, FileSystemLoader(templates_dir))  # type: ignore
+        self.templates.env.globals["error_alert"] = get_current_error_alert
+        self.templates.env.globals["app_version"] = self.app.settings.app_version
+
+    @staticmethod
+    def _validate_view(view: type[ModelView] | type[BaseView]) -> None:
+        if not issubclass(view, (BaseAPPView, BaseModelView)):
+            raise ValueError(
+                f"Admin view must use a shared access-controlled base: {view.__name__}"
+            )
+        if not isinstance(view.__dict__.get("required_permission"), Permission):
+            raise ValueError(f"Admin view must declare required_permission: {view.__name__}")
+
+    def add_model_view(self, view: type[ModelView]) -> None:
+        self._validate_view(view)
+        super().add_model_view(view)
+
+    def add_base_view(self, view: type[BaseView]) -> None:
+        self._validate_view(view)
+        super().add_base_view(view)
+
+    def _register_views(self) -> None:
+        for view in ADMIN_VIEWS:
+            self.add_view(view)
+
+
+def make_admin(app: "StellarAPP") -> Admin:
+    """Create a simple admin application"""
+    return AdminApp(
+        app,
+        base_url=app.settings.admin.base_url,
+        title=f"{app.settings.admin.title} ({app.settings.app_version})",
+        session_maker=db_session.get_session_factory(),
+        authentication_backend=AdminAuth(
+            secret_key=app.settings.app_secret_key.get_secret_value(),
+            settings=app.settings,
+        ),
+    )
