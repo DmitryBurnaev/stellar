@@ -10,7 +10,7 @@ The shared application infrastructure and regression tests originate from
 
 ## Run locally
 
-Install uv and Python 3.15. For a containerized app and PostgreSQL 17, install
+Install uv and Python 3.14. For a containerized app and PostgreSQL 17, install
 Docker with Compose v2. Run these commands from the repository root.
 
 ```sh
