@@ -11,7 +11,8 @@ RUN uv export --frozen --no-dev --output-file service.txt && \
 FROM python-base AS base
 WORKDIR /app
 ARG PIP_VERSION=26.3
-RUN pip install --only-binary=:all: --no-cache-dir --upgrade "pip==${PIP_VERSION}" && \
+RUN apk add --no-cache --upgrade 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'zlib>=1.4-r0' && \
+    pip install --only-binary=:all: --no-cache-dir --upgrade "pip==${PIP_VERSION}" && \
     addgroup -S stellar && adduser -S -D -H -G stellar stellar
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app
 COPY src/ ./src/
@@ -27,8 +28,11 @@ ENV RUFF_CACHE_DIR=/tmp/ruff MYPY_CACHE_DIR=/tmp/mypy
 USER stellar
 
 FROM base AS service
+# Package installers are only needed while building the service image.
 RUN --mount=type=bind,from=requirements,source=/build,target=/requirements \
-    pip install --only-binary=:all: --no-cache-dir --no-deps --require-hashes -r /requirements/service.txt
+    pip install --only-binary=:all: --no-cache-dir --no-deps --require-hashes -r /requirements/service.txt && \
+    pip uninstall --yes pip && \
+    rm -f /usr/local/lib/python3.14/ensurepip/_bundled/pip-*.whl
 ENV APP_PORT=8000
 USER stellar
 EXPOSE 8000

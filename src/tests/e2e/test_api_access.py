@@ -112,7 +112,10 @@ class Harness:
         token_id = rows[0]["id"]
         details = self.admin.get(f"/admin/token/details/{token_id}")
         assert details.status_code == 200
-        assert "token-value-input" not in details.text
+        details_parser = TokenParser()
+        details_parser.feed(details.text)
+        if details_parser.token is not None or parser.token in details.text:
+            pytest.fail("The token details page revealed a token after creation")
         return token_id, parser.token
 
     def create_account(self, role: str, flags: tuple[str, ...] = ()) -> Account:
