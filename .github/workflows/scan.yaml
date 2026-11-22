@@ -159,8 +159,21 @@ jobs:
           git init "$rules"
           git -C "$rules" fetch --depth 1 https://github.com/opengrep/opengrep-rules.git f1d2b562b414783763fd02a6ed2736eaed622efa
           git -C "$rules" checkout --detach FETCH_HEAD
-          "$binary" scan --config "$rules/python" --no-rewrite-rule-ids --strict --error --json . |
-            jq '{results: [.results[] | {check_id, path, start, end, severity: .extra.severity}], errors: [.errors[] | {code, level, type}]}' > "$RUNNER_TEMP/opengrep.json"
+          report="$RUNNER_TEMP/opengrep.json"
+          scan_status=0
+          # These maintainability rules misclassify boolean attributes and valid returns.
+          "$binary" scan --config "$rules/python" --no-rewrite-rule-ids \
+            --exclude-rule is-function-without-parentheses --exclude-rule return-not-in-function \
+            --strict --error --json . |
+            jq -e '{
+              results: [.results[] | {check_id, path, start, "end": .end, severity: .extra.severity}],
+              errors: [.errors[] | {code, level, type}]
+            }' > "$report" ||
+            scan_status=$?
+          if [[ -s "$report" ]]; then
+            jq -r '.results[] | "\(.path):\(.start.line): \(.severity) \(.check_id)"' "$report"
+          fi
+          exit "$scan_status"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:

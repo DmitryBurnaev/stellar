@@ -49,7 +49,8 @@ test-in-docker: ## Apply migrations and run tests with disposable PostgreSQL
 	docker compose run --rm -T test
 
 test-e2e-in-docker: ## Run real HTTP tests with disposable PostgreSQL
-	docker compose run --rm -T --entrypoint pytest -e RUN_API_E2E=1 -e E2E_ARTIFACT_DIR=/tmp/stellar-e2e test src/tests/e2e --confcutdir=src/tests/e2e -m e2e -q
+	docker compose run --rm -T --entrypoint pytest -e RUN_API_E2E=1 -e E2E_ARTIFACT_DIR=/tmp/stellar-e2e \
+		test src/tests/e2e --confcutdir=src/tests/e2e -m e2e -q -o cache_dir=/tmp/stellar-pytest
 
 migrate: ## Upgrade PostgreSQL to the current revision
 	$(UV) run --locked alembic upgrade head
