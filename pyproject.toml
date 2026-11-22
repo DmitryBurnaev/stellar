@@ -2,7 +2,7 @@
 name = "stellar"
 version = "0.1.0"
 description = "Control panel for groups of servers"
-requires-python = ">=3.15,<3.16"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "fastapi==0.142.1",
     "itsdangerous==2.2.0",         # required by session engine
