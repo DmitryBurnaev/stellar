@@ -13,10 +13,24 @@ from src.application import StellarAPP
 from src.constants import APP_DIR
 from src.modules.admin.utils import get_current_error_alert
 from src.modules.admin.views import BaseAPPView, BaseModelView, UserAdminView, TokenAdminView
+from src.modules.admin.views.inventory import (
+    ApplicationAdminView,
+    ProviderAdminView,
+    ServerAdminView,
+    ServerDomainAdminView,
+    ServerGroupAdminView,
+)
 from src.db import session as db_session
 from src.modules.auth.permissions import Permission
 
 ADMIN_VIEWS: tuple[type[BaseView], ...] = (UserAdminView, TokenAdminView)
+INVENTORY_VIEWS: tuple[type[BaseModelView], ...] = (
+    ProviderAdminView,
+    ApplicationAdminView,
+    ServerGroupAdminView,
+    ServerAdminView,
+    ServerDomainAdminView,
+)
 
 
 class AdminApp(Admin):
@@ -107,7 +121,7 @@ class AdminApp(Admin):
         super().add_base_view(view)
 
     def _register_views(self) -> None:
-        for view in ADMIN_VIEWS:
+        for view in (*ADMIN_VIEWS, *INVENTORY_VIEWS):
             self.add_view(view)
 
 

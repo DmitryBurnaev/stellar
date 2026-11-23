@@ -833,6 +833,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "click" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
     { name = "pydantic" },
@@ -849,7 +850,6 @@ dependencies = [
 dev = [
     { name = "black" },
     { name = "coverage" },
-    { name = "httpx" },
     { name = "httpx2" },
     { name = "mypy" },
     { name = "pip" },
@@ -866,6 +866,7 @@ requires-dist = [
     { name = "asyncpg", specifier = "==0.31.0" },
     { name = "click", specifier = "==8.5.0" },
     { name = "fastapi", specifier = "==0.142.1" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "itsdangerous", specifier = "==2.2.0" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "pydantic", specifier = "==2.13.5" },
@@ -882,7 +883,6 @@ requires-dist = [
 dev = [
     { name = "black", specifier = "==26.10.1" },
     { name = "coverage", specifier = "==7.16.2" },
-    { name = "httpx", specifier = "==0.28.1" },
     { name = "httpx2", specifier = "==2.16.0" },
     { name = "mypy", specifier = "==2.3.1" },
     { name = "pip", specifier = "==26.3" },

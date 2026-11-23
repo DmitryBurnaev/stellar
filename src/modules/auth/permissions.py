@@ -10,6 +10,9 @@ from typing import Protocol
 class Permission(StrEnum):
     ADMIN_PANEL = "can_access_admin"
     SYSTEM_API = "can_access_system_api"
+    INVENTORY = "can_view_inventory"
+    INVENTORY_ADMIN = "can_manage_inventory"
+    SERVER_CHECKS = "can_run_server_checks"
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,13 @@ PERMISSION_DEFINITIONS: Mapping[Permission, PermissionDefinition] = MappingProxy
         ),
         Permission.SYSTEM_API: PermissionDefinition(
             "System", "Access the protected system health endpoint."
+        ),
+        Permission.INVENTORY: PermissionDefinition("Inventory", "View servers and their status."),
+        Permission.INVENTORY_ADMIN: PermissionDefinition(
+            "Manage inventory", "Manage servers, catalogs, groups and favorites."
+        ),
+        Permission.SERVER_CHECKS: PermissionDefinition(
+            "Server checks", "Run server and external port checks."
         ),
     }
 )

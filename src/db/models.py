@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -28,6 +29,15 @@ class User(BaseModel):
     )
     can_access_system_api: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    can_view_inventory: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false()
+    )
+    can_manage_inventory: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false()
+    )
+    can_run_server_checks: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, server_default=sa.false()
     )
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
@@ -100,3 +110,112 @@ class Token(BaseModel):
             f"updated_at={self.updated_at}"
             f")"
         )
+
+
+server_groups = sa.Table(
+    "server_groups",
+    BaseModel.metadata,
+    sa.Column("server_id", sa.ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("group_id", sa.ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+)
+server_applications = sa.Table(
+    "server_applications",
+    BaseModel.metadata,
+    sa.Column("server_id", sa.ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column(
+        "application_id", sa.ForeignKey("applications.id", ondelete="RESTRICT"), primary_key=True
+    ),
+)
+
+
+class Provider(BaseModel):
+    __tablename__ = "providers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), unique=True)
+    description: Mapped[str | None] = mapped_column(sa.Text)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Application(BaseModel):
+    __tablename__ = "applications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), unique=True)
+    description: Mapped[str | None] = mapped_column(sa.Text)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ServerGroup(BaseModel):
+    __tablename__ = "groups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), unique=True)
+    description: Mapped[str | None] = mapped_column(sa.Text)
+    servers: Mapped[list["Server"]] = relationship(secondary=server_groups, back_populates="groups")
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Server(BaseModel):
+    __tablename__ = "servers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip_address: Mapped[str] = mapped_column(sa.String(45), unique=True)
+    scan_address: Mapped[str | None] = mapped_column(sa.String(45))
+    ssh_alias: Mapped[str] = mapped_column(sa.String(255))
+    provider_id: Mapped[int] = mapped_column(sa.ForeignKey("providers.id", ondelete="RESTRICT"))
+    os_name: Mapped[str | None] = mapped_column(sa.String(128))
+    os_version: Mapped[str | None] = mapped_column(sa.String(128))
+    last_updated_at: Mapped[datetime | None]
+    provider: Mapped[Provider] = relationship(lazy="joined")
+    domains: Mapped[list["ServerDomain"]] = relationship(
+        back_populates="server", cascade="all, delete-orphan"
+    )
+    groups: Mapped[list[ServerGroup]] = relationship(
+        secondary=server_groups, back_populates="servers"
+    )
+    applications: Mapped[list[Application]] = relationship(secondary=server_applications)
+
+    def __str__(self) -> str:
+        return self.ip_address
+
+
+class ServerDomain(BaseModel):
+    __tablename__ = "server_domains"
+    __table_args__ = (sa.UniqueConstraint("server_id", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    server_id: Mapped[int] = mapped_column(sa.ForeignKey("servers.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(sa.String(253))
+    server: Mapped[Server] = relationship(back_populates="domains")
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ServerCheck(BaseModel):
+    """A completed attempt, including partial results and safe diagnostics."""
+
+    __tablename__ = "server_checks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    server_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("servers.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(sa.String(32))
+    status: Mapped[str] = mapped_column(sa.String(32))
+    started_at: Mapped[datetime] = mapped_column(default=utcnow)
+    finished_at: Mapped[datetime | None]
+    result: Mapped[dict[str, Any] | None] = mapped_column(sa.JSON)
+    error: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class FavoriteComponent(BaseModel):
+    __tablename__ = "favorite_components"
+    __table_args__ = (sa.UniqueConstraint("server_id", "kind", "name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    server_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("servers.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(sa.String(16))
+    name: Mapped[str] = mapped_column(sa.String(512))

@@ -11,7 +11,7 @@ RUN uv export --frozen --no-dev --output-file service.txt && \
 FROM python-base AS base
 WORKDIR /app
 ARG PIP_VERSION=26.3
-RUN apk add --no-cache --upgrade 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'zlib>=1.4-r0' && \
+RUN apk add --no-cache --upgrade openssh-client 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'zlib>=1.4-r0' && \
     pip install --only-binary=:all: --no-cache-dir --upgrade "pip==${PIP_VERSION}" && \
     addgroup -S stellar && adduser -S -D -H -G stellar stellar
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app

@@ -26,6 +26,12 @@ async def test_permission_schema_at_migration_head() -> None:
         config = Config()
         config.set_main_option("script_location", str(APP_DIR / "migrations"))
         config.attributes["connection"] = connection
+        command.upgrade(config, "0001")
+        connection.execute(
+            sa.text(
+                "INSERT INTO users (username, password, created_at) VALUES ('legacy-user', 'unused', NOW())"
+            )
+        )
         command.upgrade(config, "head")
         columns = {column["name"]: column for column in sa.inspect(connection).get_columns("users")}
         permission_names = {permission.value for permission in Permission}
@@ -37,6 +43,23 @@ async def test_permission_schema_at_migration_head() -> None:
             assert isinstance(columns[name]["type"], sa.Boolean)
             assert columns[name]["nullable"] is False
             assert columns[name]["default"] == "false"
+        row = connection.execute(
+            sa.text(
+                "SELECT can_view_inventory, can_manage_inventory, can_run_server_checks FROM users WHERE username = 'legacy-user'"
+            )
+        ).one()
+        assert tuple(row) == (False, False, False)
+        assert {
+            "servers",
+            "groups",
+            "providers",
+            "applications",
+            "server_groups",
+            "server_applications",
+            "server_domains",
+            "server_checks",
+            "favorite_components",
+        } <= set(sa.inspect(connection).get_table_names())
 
     try:
         async with engine.connect() as connection:

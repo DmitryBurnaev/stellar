@@ -6,7 +6,7 @@
     <title>Stellar — {{ title }}</title>
     <link rel="stylesheet" href="/static/css/stellar.css?v={{ static_assets_version }}">
 </head>
-{% from "snippets/icons.html" import icon_dashboard, icon_star, icon_settings, icon_menu, icon_close, icon_chevron_down, icon_logout %}
+{% from "snippets/icons.html" import icon_activity, icon_dashboard, icon_star, icon_settings, icon_menu, icon_close, icon_chevron_down, icon_logout %}
 <body>
     {% block body %}
     <div class="app-shell">
@@ -27,6 +27,8 @@
                 <a href="{{ link.path }}" class="nav-link {% if link.slug == current %}is-active{% endif %}"{% if link.slug == current %} aria-current="page"{% endif %}>
                     {% if link.slug == "dashboard" %}
                     {{ icon_dashboard("icon") }}
+                    {% elif link.slug == "servers" %}
+                    {{ icon_activity("icon") }}
                     {% elif link.slug == "admin" %}
                     {{ icon_settings("icon") }}
                     {% endif %}

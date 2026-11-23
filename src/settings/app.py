@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from pydantic import SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -51,6 +52,12 @@ class AppSettings(BaseSettings):
     app_port: int = 8003
     app_version: str = Field(default_factory=get_default_app_version)
     jwt_algorithm: str = "HS256"
+    ssh_config_file: Path | None = None
+    ssh_known_hosts_file: Path | None = None
+    ssh_connect_timeout: int = Field(default=15, gt=0)
+    ssh_command_timeout: int = Field(default=40, gt=0)
+    port_scanner_url: str | None = None
+    port_scanner_token: SecretStr | None = None
     admin: AdminSettings = Field(default_factory=AdminSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     log: LogSettings = Field(default_factory=LogSettings)

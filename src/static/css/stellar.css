@@ -116,3 +116,34 @@ button { cursor: pointer; }
     .status-card { grid-template-columns: auto 1fr; }
     .status-value { grid-column: 2; }
 }
+
+a { color: #a8e7cf; }
+.inventory-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; margin: 1.5rem 0; }
+.inventory-filters label, .component-search { display: grid; gap: .4rem; color: #c9dce0; font-size: .85rem; }
+.inventory-filters input, .inventory-filters select, .component-search input { min-height: 2.5rem; border: 1px solid #425c66; border-radius: .4rem; background: #1a2a30; color: #fff; padding: .5rem .7rem; }
+.inventory-filters .primary-button, .section-header .primary-button { margin: 0; }
+.inventory-list, .inventory-card { border: 1px solid #344951; border-radius: .75rem; background: #1a2a30; }
+.inventory-row { display: grid; grid-template-columns: 2fr 1.5fr auto; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid #344951; }
+.inventory-row:last-child { border-bottom: 0; }
+.inventory-row p, .muted { color: #a8bdc5; font-size: .85rem; overflow-wrap: anywhere; }
+.inventory-row p { margin: .3rem 0 0; }
+.inventory-status { color: #c9dce0; font-size: .85rem; }
+.inventory-empty { padding: 1rem 1.25rem; }
+.inventory-card { margin-top: 1rem; padding: 1.25rem; }
+.inventory-card h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+.inventory-card p { color: #c9dce0; line-height: 1.5; }
+.inventory-card summary { cursor: pointer; font-weight: 700; }
+.back-link { display: inline-block; margin-bottom: .8rem; }
+.detail-grid { display: grid; grid-template-columns: minmax(8rem, 12rem) 1fr; gap: .6rem; margin: 0; }
+.detail-grid dt { color: #a8bdc5; }
+.detail-grid dd { margin: 0; overflow-wrap: anywhere; }
+.section-header, .component-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.section-header h2 { margin: 0; }
+.component-list, .history-list { list-style: none; margin: .8rem 0; padding: 0; }
+.component-row { border-top: 1px solid #344951; padding: .65rem 0; }
+.component-row[hidden] { display: none; }
+.component-row span { overflow-wrap: anywhere; }
+.component-search { margin-top: 1rem; max-width: 24rem; }
+.text-button { border: 0; background: transparent; color: #a8e7cf; text-align: right; }
+.history-list li { padding: .3rem 0; color: #c9dce0; }
+@media (max-width: 600px) { .inventory-row { grid-template-columns: 1fr; gap: .5rem; } .component-row { align-items: flex-start; flex-direction: column; } }

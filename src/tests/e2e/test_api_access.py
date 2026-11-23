@@ -26,7 +26,13 @@ from src.settings.db import DBSettings
 from src.tests.e2e.server import wait_for_server
 
 ROOT = Path(__file__).resolve().parents[3]
-FLAGS = ("can_access_admin", "can_access_system_api")
+FLAGS = (
+    "can_access_admin",
+    "can_access_system_api",
+    "can_view_inventory",
+    "can_manage_inventory",
+    "can_run_server_checks",
+)
 ROLES = {
     "none": (),
     "system": ("can_access_system_api",),
@@ -424,7 +430,7 @@ def test_database_schema_and_permission_defaults(harness: Harness) -> None:
     )
     assert {row["column_name"] for row in rows} == set(FLAGS)
     assert all(row["is_nullable"] == "NO" and row["column_default"] == "false" for row in rows)
-    assert harness.metadata["alembic_head"] == "0001"
+    assert harness.metadata["alembic_head"] == "0002"
 
 
 def test_independent_sessions_and_live_browser_permissions(harness: Harness) -> None:
@@ -471,3 +477,90 @@ def test_independent_sessions_and_live_browser_permissions(harness: Harness) -> 
 
         harness.update_account(account, active=False)
         assert browser.get("/").headers["location"] == "/login"
+
+
+def test_inventory_sqladmin_and_browser(harness: Harness) -> None:
+    harness.admin_post("/admin/provider/create", {"name": "Example", "save": "Save"}, 302)
+    provider_id = harness.query("SELECT id FROM providers WHERE name = :name", name="Example")[0][
+        "id"
+    ]
+    harness.admin_post("/admin/application/create", {"name": "Database", "save": "Save"}, 302)
+    app_id = harness.query("SELECT id FROM applications WHERE name = :name", name="Database")[0][
+        "id"
+    ]
+    harness.admin_post(
+        "/admin/server/create",
+        {
+            "ip_address": "192.0.2.5",
+            "ssh_alias": "server-test",
+            "provider": str(provider_id),
+            "applications": str(app_id),
+            "save": "Save",
+        },
+        302,
+    )
+    server_id = harness.query("SELECT id FROM servers WHERE ip_address = :ip", ip="192.0.2.5")[0][
+        "id"
+    ]
+    harness.admin_post(
+        "/admin/server-group/create",
+        {"name": "Production", "servers": str(server_id), "save": "Save"},
+        302,
+    )
+    harness.admin_post(
+        "/admin/server-domain/create",
+        {"name": "Web.Example.Test.", "server": str(server_id), "save": "Save"},
+        302,
+    )
+    assert (
+        harness.query("SELECT name FROM server_domains WHERE server_id = :id", id=server_id)[0][
+            "name"
+        ]
+        == "web.example.test"
+    )
+    account = harness.accounts["admin_panel"]
+    with httpx.Client(
+        base_url=harness.client.base_url,
+        headers={"Origin": str(harness.client.base_url).rstrip("/")},
+    ) as browser:
+        assert (
+            browser.post(
+                "/admin/login", data={"username": account.name, "password": account.password}
+            ).status_code
+            == 302
+        )
+        assert (
+            browser.post(
+                "/admin/server/create",
+                data={
+                    "ip_address": "192.0.2.6",
+                    "ssh_alias": "other",
+                    "provider": str(provider_id),
+                    "save": "Save",
+                },
+            ).status_code
+            == 403
+        )
+        assert (
+            browser.post(
+                "/admin/server-group/create", data={"name": "Unauthorized", "save": "Save"}
+            ).status_code
+            == 403
+        )
+        assert (
+            browser.post(
+                "/login", data={"username": account.name, "password": account.password}
+            ).status_code
+            == 303
+        )
+        assert browser.get("/servers").status_code == 403
+        harness.update_account(account, ("can_access_admin", "can_view_inventory"))
+        result = browser.get("/servers", params={"q": "web.example.test"})
+        assert (
+            result.status_code == 200 and "192.0.2.5" in result.text and "Production" in result.text
+        )
+        detail = browser.get(f"/servers/{server_id}")
+        assert detail.status_code == 200 and "Database" in detail.text
+        assert browser.post(f"/servers/{server_id}/check").status_code == 403
+        harness.update_account(account, ("can_access_admin",))
+        assert browser.get(f"/servers/{server_id}").status_code == 403

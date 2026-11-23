@@ -7,6 +7,13 @@ feature flag and drives the user form in SQLAdmin.
 | --- | --- | --- |
 | `ADMIN_PANEL` | `can_access_admin` | Admin access and management of users, permissions, and tokens |
 | `SYSTEM_API` | `can_access_system_api` | `GET /api/system/health/` and visibility of its dashboard instructions |
+| `INVENTORY` | `can_view_inventory` | View server inventory |
+| `INVENTORY_ADMIN` | `can_manage_inventory` | Manage inventory in SQLAdmin and favorites |
+| `SERVER_CHECKS` | `can_run_server_checks` | Run server and external port checks |
+
+Inventory SQLAdmin views require both `ADMIN_PANEL` and `INVENTORY_ADMIN`.
+Browser server checks require both `INVENTORY` and `SERVER_CHECKS`, and favorite
+changes require both `INVENTORY` and `INVENTORY_ADMIN`.
 
 An active superuser (`is_admin`) has every permission. Other active users need
 each explicit grant. The admin grant permits its holder to manage users and

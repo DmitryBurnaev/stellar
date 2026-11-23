@@ -2,8 +2,7 @@
 
 Stellar is a control panel for managing server groups, monitoring availability, and
 coordinating updates. Version 0.1.0 provides the web dashboard, user and API token
-administration, and a protected system health endpoint. Server inventory, host
-monitoring, and update operations are planned separately.
+administration, server inventory, on-demand checks, and a protected system health endpoint.
 
 The shared application infrastructure and regression tests originate from
 [code-agent main at 2a3c50d](https://github.com/DmitryBurnaev/code-agent/tree/2a3c50db63ad0827f5ece322e85a802bbbe9ee66).
@@ -60,6 +59,43 @@ The endpoint returns `200` with the status and UTC timestamp. A missing,
 invalid, expired, or disabled token, or a disabled user, returns `401`. An
 active user without the System permission receives `403`.
 See [feature access control](docs/access-control.md) for the permission model.
+
+## Server inventory and checks
+
+An administrator with the Admin and Manage inventory permissions creates providers,
+applications, groups, servers, and server domains in SQLAdmin. Each server uses an
+SSH host alias from the OpenSSH configuration available to Stellar. Users with
+Inventory can view and search servers. Server checks additionally require Server
+checks, and editing favorites requires Manage inventory.
+Set a separate external scan address for a server behind NAT. Otherwise Stellar
+sends the server's inventory IP address to the scanner.
+
+Set `SSH_CONFIG_FILE` and `SSH_KNOWN_HOSTS_FILE` to files readable by the Stellar
+process. Configure the SSH user, port, host name, and `IdentityFile` in the SSH
+configuration. Populate known hosts with verified host keys before checking. For a
+container deployment, mount those files and private keys read-only at the absolute
+paths used in the configuration and make them readable by the container user.
+Set `SSH_CONNECT_TIMEOUT` and `SSH_COMMAND_TIMEOUT` in seconds if needed.
+
+The check reads OS release information, installed dpkg packages, available APT
+updates, the APT update timestamp and the images of running and stopped Docker
+containers. It uses the server's existing APT indexes. Configure the SSH account
+to read Docker metadata where needed. Stellar retains the last successful data
+for each section and shows the collection time and partial failures. Mark a
+package or image as a favorite in the server detail page. The recorded last manual
+update is entered in SQLAdmin and is separate from a check.
+
+For external ports, configure `PORT_SCANNER_URL` with an HTTPS base URL and
+`PORT_SCANNER_TOKEN` with the bearer token. The scanner implements the proposed
+[API contract](docs/port-scanner-api.md). Start a scan from the server page. The
+page refreshes its status automatically and provides a retry button if needed.
+The scanner is deployed separately.
+
+To exercise the SSH collector against a disposable test host, set
+`STELLAR_TEST_SSH_CONFIG`, `STELLAR_TEST_SSH_KNOWN_HOSTS`,
+`STELLAR_TEST_SSH_ALIAS` and `STELLAR_TEST_SSH_EXPECTED_OS`, then run
+`uv run pytest src/tests/units/test_server_checks.py::test_real_ssh_collection`.
+The test reads host metadata and verifies host-key rejection.
 
 ## Verify
 

@@ -7,7 +7,7 @@ from starlette.datastructures import FormData, URL
 from starlette.responses import Response
 
 from src.application import StellarAPP
-from src.modules.admin.app import AdminApp, ADMIN_VIEWS, make_admin
+from src.modules.admin.app import AdminApp, ADMIN_VIEWS, INVENTORY_VIEWS, make_admin
 from src.modules.admin.views import BaseAPPView, BaseModelView
 
 
@@ -103,7 +103,7 @@ class TestAdminAppInitialization:
 
     def test_admin_app_views_initialization(self, admin_app: AdminApp) -> None:
         assert isinstance(admin_app._views, list)
-        assert len(admin_app._views) == len(ADMIN_VIEWS)
+        assert len(admin_app._views) == len(ADMIN_VIEWS) + len(INVENTORY_VIEWS)
         assert admin_app.templates.env.globals["app_version"] == admin_app.app.settings.app_version
 
 
@@ -287,8 +287,8 @@ class TestAdminAppRegisterViews:
 
         admin_app._register_views()
 
-        assert mock_add_view.call_count == len(ADMIN_VIEWS)
-        for view in ADMIN_VIEWS:
+        assert mock_add_view.call_count == len(ADMIN_VIEWS) + len(INVENTORY_VIEWS)
+        for view in (*ADMIN_VIEWS, *INVENTORY_VIEWS):
             mock_add_view.assert_any_call(view)
 
     def test_register_views_with_custom_views(
@@ -302,7 +302,7 @@ class TestAdminAppRegisterViews:
 
         admin_app._register_views()
 
-        assert mock_add_view.call_count == len(ADMIN_VIEWS)
+        assert mock_add_view.call_count == len(ADMIN_VIEWS) + len(INVENTORY_VIEWS)
 
 
 class TestMakeAdmin:
