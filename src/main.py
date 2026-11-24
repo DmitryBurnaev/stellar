@@ -1,6 +1,7 @@
 import sys
+import asyncio
 import logging.config
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import AsyncGenerator
 
 import uvicorn
@@ -16,6 +17,7 @@ from src.constants import APP_DIR
 from src.exceptions import AppSettingsError, StartupError
 from src.settings import get_app_settings, AppSettings
 from src.modules.api import system_router
+from src.modules.port_scanner import run_scan_worker
 from src.db.session import initialize_database, close_database
 from src.db.diagnostics import failure_details
 
@@ -33,12 +35,18 @@ async def lifespan(app: StellarAPP) -> AsyncGenerator[None, None]:
         # The safe causal diagnostics above replace Uvicorn's raw driver traceback.
         raise StartupError("Application startup failed; see diagnostic log") from None
 
+    scanner_task: asyncio.Task[None] | None = None
     try:
         make_admin(app)
         validate_access_policies(app)
+        scanner_task = asyncio.create_task(run_scan_worker())
         logger.info("Application startup completed successfully")
         yield
     finally:
+        if scanner_task is not None:
+            scanner_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scanner_task
         try:
             await close_database()
         except Exception as exc:

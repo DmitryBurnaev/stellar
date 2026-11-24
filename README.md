@@ -25,7 +25,7 @@ migration creates the active superuser specified by `ADMIN_USERNAME` and
 `ADMIN_PASSWORD` (the generated username is `admin`).
 
 Sign in at [the dashboard](http://127.0.0.1:8003/login) and
-[SQLAdmin](http://127.0.0.1:8003/admin/login) with the same initial credentials.
+[SQLAdmin](http://127.0.0.1:8003/sadm/login) with the same initial credentials.
 Each interface has its own session. The local template permits HTTP on loopback.
 For an HTTPS deployment, set `WEB_SESSION_HTTPS_ONLY=true` and configure
 Uvicorn's trusted proxy addresses with `FORWARDED_ALLOW_IPS` if TLS terminates at a proxy.
@@ -68,7 +68,7 @@ SSH host alias from the OpenSSH configuration available to Stellar. Users with
 Inventory can view and search servers. Server checks additionally require Server
 checks, and editing favorites requires Manage inventory.
 Set a separate external scan address for a server behind NAT. Otherwise Stellar
-sends the server's inventory IP address to the scanner.
+checks the server's inventory IP address.
 
 Set `SSH_CONFIG_FILE` and `SSH_KNOWN_HOSTS_FILE` to files readable by the Stellar
 process. Configure the SSH user, port, host name, and `IdentityFile` in the SSH
@@ -85,11 +85,11 @@ for each section and shows the collection time and partial failures. Mark a
 package or image as a favorite in the server detail page. The recorded last manual
 update is entered in SQLAdmin and is separate from a check.
 
-For external ports, configure `PORT_SCANNER_URL` with an HTTPS base URL and
-`PORT_SCANNER_TOKEN` with the bearer token. The scanner implements the proposed
-[API contract](docs/port-scanner-api.md). Start a scan from the server page. The
-page refreshes its status automatically and provides a retry button if needed.
-The scanner is deployed separately.
+Start a TCP port scan from the server page. Stellar checks ports 1–65535 in the
+background from the host on which it runs. It displays open ports, progress and
+the number of connections that timed out or were filtered. Results reflect the
+network path from that host. Scans run one at a time and the application marks an
+interrupted scan as failed after a restart.
 
 To exercise the SSH collector against a disposable test host, set
 `STELLAR_TEST_SSH_CONFIG`, `STELLAR_TEST_SSH_KNOWN_HOSTS`,

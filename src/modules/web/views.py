@@ -3,7 +3,6 @@
 import logging
 from typing import Annotated, Any, NamedTuple, TypeAlias
 from urllib.parse import urlencode
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request
 from fastapi import HTTPException
@@ -17,7 +16,6 @@ from src.db.models import User, Server, ServerDomain, ServerGroup, ServerCheck, 
 from src.db import session as db_session
 from src.modules.server_checks import collect_server
 from src.modules.ssh import SSHError
-from src.modules.port_scanner import ScannerError, get_scan, submit_scan
 from src.utils import utcnow
 from src.modules.web.auth import (
     authenticate_web_user,
@@ -330,6 +328,25 @@ async def server_detail(request: Request, server_id: int, user: InventoryUser) -
     )
 
 
+@inventory_router.get("/servers/{server_id}/ports/status")
+async def port_scan_status(server_id: int) -> dict[str, Any]:
+    async with db_session.get_session_factory()() as session:
+        check = await session.scalar(
+            sa.select(ServerCheck)
+            .where(ServerCheck.server_id == server_id, ServerCheck.kind == "ports")
+            .order_by(ServerCheck.id.desc())
+            .limit(1)
+        )
+    if check is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    result = check.result or {}
+    return {
+        "status": check.status,
+        "checked": result.get("checked", 0),
+        "total": result.get("total", 65535),
+    }
+
+
 @checks_router.post("/servers/{server_id}/check")
 async def check_server(request: Request, server_id: int) -> RedirectResponse:
     form = await request.form()
@@ -434,55 +451,16 @@ async def check_ports(request: Request, server_id: int) -> RedirectResponse:
                 attempt = ServerCheck(
                     server_id=server_id,
                     kind="ports",
-                    status="submitting",
+                    status="queued",
                     started_at=utcnow(),
                     result={
                         "address": server.scan_address or server.ip_address,
-                        "key": str(uuid4()),
+                        "source": "local",
+                        "checked": 0,
+                        "total": 65535,
                     },
                 )
                 session.add(attempt)
-    # Commit the idempotency key before contacting the scanner, so retries remain safe.
-    async with db_session.get_session_factory()() as session:
-        async with session.begin():
-            await session.scalar(
-                sa.select(Server.id).where(Server.id == server_id).with_for_update()
-            )
-            attempt = await session.scalar(
-                sa.select(ServerCheck)
-                .where(
-                    ServerCheck.server_id == server_id,
-                    ServerCheck.kind == "ports",
-                    ServerCheck.status.in_(["submitting", "queued", "running"]),
-                )
-                .order_by(ServerCheck.id.desc())
-                .limit(1)
-            )
-            if attempt is not None and attempt.result:
-                result = dict(attempt.result)
-                try:
-                    if attempt.status == "submitting":
-                        result["scan_id"] = await submit_scan(
-                            result["address"], result["key"], request.app.settings
-                        )
-                        attempt.status = "queued"
-                    else:
-                        response = await get_scan(
-                            result["scan_id"], result["address"], request.app.settings
-                        )
-                        attempt.status = response["status"]
-                        if attempt.status in {"succeeded", "failed"}:
-                            attempt.finished_at = utcnow()
-                        if attempt.status == "succeeded":
-                            result["open_tcp_ports"] = response["open_tcp_ports"]
-                            result["scanner"] = response.get("scanner", "Unknown")
-                        elif attempt.status == "failed":
-                            attempt.error = "The scanner reported a failed scan"
-                    attempt.result = result
-                    if attempt.status != "failed":
-                        attempt.error = None
-                except ScannerError as exc:
-                    attempt.error = str(exc)
     return detail_redirect(server_id, str(form.get("return_query", "")))
 
 

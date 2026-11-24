@@ -13,24 +13,28 @@ from src.modules.auth.permissions import Permission
 
 class ProviderAdminView(BaseModelView, model=Provider):
     required_permission = Permission.INVENTORY_ADMIN
+    icon = "fa-solid fa-cloud"
     column_list = (Provider.id, Provider.name, Provider.description)
     form_columns = (Provider.name, Provider.description)
 
 
 class ApplicationAdminView(BaseModelView, model=Application):
     required_permission = Permission.INVENTORY_ADMIN
+    icon = "fa-solid fa-box"
     column_list = (Application.id, Application.name, Application.description)
     form_columns = (Application.name, Application.description)
 
 
 class ServerGroupAdminView(BaseModelView, model=ServerGroup):
     required_permission = Permission.INVENTORY_ADMIN
+    icon = "fa-solid fa-layer-group"
     column_list = (ServerGroup.id, ServerGroup.name, ServerGroup.description)
     form_columns = (ServerGroup.name, ServerGroup.description, ServerGroup.servers)
 
 
 class ServerAdminView(BaseModelView, model=Server):
     required_permission = Permission.INVENTORY_ADMIN
+    icon = "fa-solid fa-server"
     column_labels = {
         Server.ip_address: "IP address",
         Server.scan_address: "External scan address",
@@ -68,6 +72,7 @@ class ServerAdminView(BaseModelView, model=Server):
 
 class ServerDomainAdminView(BaseModelView, model=ServerDomain):
     required_permission = Permission.INVENTORY_ADMIN
+    icon = "fa-solid fa-globe"
     form_args = {
         "name": {
             "validators": [

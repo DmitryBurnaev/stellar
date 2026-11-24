@@ -38,15 +38,15 @@ def test_app(app_settings_test: AppSettings, monkeypatch: pytest.MonkeyPatch) ->
 MUTATIONS = (
     ("POST", "/login"),
     ("POST", "/logout"),
-    ("POST", "/admin/login"),
-    ("GET", "/admin/logout"),
-    ("POST", "/admin/user/create"),
-    ("POST", "/admin/user/edit/1"),
-    ("DELETE", "/admin/user/delete?pks=1"),
-    ("POST", "/admin/token/create"),
-    ("DELETE", "/admin/token/delete?pks=1"),
-    ("GET", "/admin/token/action/activate?pks=1"),
-    ("GET", "/admin/token/action/deactivate?pks=1"),
+    ("POST", "/sadm/login"),
+    ("GET", "/sadm/logout"),
+    ("POST", "/sadm/user/create"),
+    ("POST", "/sadm/user/edit/1"),
+    ("DELETE", "/sadm/user/delete?pks=1"),
+    ("POST", "/sadm/token/create"),
+    ("DELETE", "/sadm/token/delete?pks=1"),
+    ("GET", "/sadm/token/action/activate?pks=1"),
+    ("GET", "/sadm/token/action/deactivate?pks=1"),
 )
 
 
@@ -120,7 +120,8 @@ def test_api_authentication_does_not_require_browser_headers(test_app: StellarAP
         assert response.status_code == 401
         assert "CSRF" not in response.text
         assert client.get("/login").status_code == 200
-        assert client.get("/admin/login").status_code == 200
+        assert client.get("/sadm/login").status_code == 200
+        assert client.get("/admin/login").status_code == 404
     finally:
         client.close()
 
@@ -146,7 +147,7 @@ def test_admin_path_under_api_prefix_still_requires_browser_headers(
 def test_admin_links_escape_stored_names_and_attributes(app_settings_test: AppSettings) -> None:
     user = User(id=7, username='<img src=x onerror="alert(1)">')
     link = admin_get_link(user, url_name='user" onclick="alert(2)')
-    assert '<a href="/admin/user&#34; onclick=&#34;alert(2)/edit/7">' in link
+    assert '<a href="/sadm/user&#34; onclick=&#34;alert(2)/edit/7">' in link
     assert "&lt;img" in link
     assert "<img" not in link
     assert ' onclick="' not in link

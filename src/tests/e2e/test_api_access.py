@@ -99,7 +99,7 @@ class Harness:
 
     def issue_token(self, user_id: int, name: str, expires: str = "") -> tuple[int, str]:
         response = self.admin_post(
-            "/admin/token/create",
+            "/sadm/token/create",
             {
                 "user": str(user_id),
                 "name": name,
@@ -116,7 +116,7 @@ class Harness:
         assert len(rows) == 1
         assert rows[0]["token"] != parser.token and len(rows[0]["token"]) == 128
         token_id = rows[0]["id"]
-        details = self.admin.get(f"/admin/token/details/{token_id}")
+        details = self.admin.get(f"/sadm/token/details/{token_id}")
         assert details.status_code == 200
         details_parser = TokenParser()
         details_parser.feed(details.text)
@@ -137,7 +137,7 @@ class Harness:
         data.update({flag: "y" for flag in flags})
         if role == "superuser":
             data["is_admin"] = "y"
-        self.admin_post("/admin/user/create", data, 302)
+        self.admin_post("/sadm/user/create", data, 302)
         row = self.query("SELECT * FROM users WHERE username = :name", name=name)[0]
         assert row["is_admin"] is (role == "superuser")
         assert all(row[flag] is (flag in flags) for flag in FLAGS)
@@ -160,7 +160,7 @@ class Harness:
             data["is_active"] = "y"
         if superuser:
             data["is_admin"] = "y"
-        self.admin_post(f"/admin/user/edit/{account.id}", data, 302)
+        self.admin_post(f"/sadm/user/edit/{account.id}", data, 302)
         row = self.query("SELECT * FROM users WHERE id = :id", id=account.id)[0]
         assert row["is_active"] is active and row["is_admin"] is superuser
         assert all(row[flag] is (flag in flags) for flag in FLAGS)
@@ -306,7 +306,7 @@ def harness(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Harness]:
         run.metadata["app_process"] = process.pid
         wait_for_server(process, api, work / "app.log")
         run.admin_post(
-            "/admin/login", {"username": "e2e_bootstrap", "password": admin_password}, 302
+            "/sadm/login", {"username": "e2e_bootstrap", "password": admin_password}, 302
         )
         for role, flags in ROLES.items():
             run.create_account(role, flags)
@@ -352,10 +352,10 @@ def invalid_tokens(harness: Harness) -> dict[str, str | None]:
     inactive = harness.create_account("inactive", ("can_access_system_api",))
     harness.update_account(inactive, active=False, superuser=True)
     disabled = harness.create_account("disabled_token", ("can_access_system_api",))
-    response = harness.admin.get(f"/admin/token/action/deactivate?pks={disabled.token_id}")
+    response = harness.admin.get(f"/sadm/token/action/deactivate?pks={disabled.token_id}")
     assert response.status_code in (302, 303, 307)
     unknown = harness.create_account("deleted_token", ("can_access_system_api",))
-    response = harness.admin.delete(f"/admin/token/delete?pks={unknown.token_id}")
+    response = harness.admin.delete(f"/sadm/token/delete?pks={unknown.token_id}")
     assert response.status_code == 200
     _, expired = harness.issue_token(
         harness.accounts["superuser"].id, "expired", "2020-01-01 00:00:00"
@@ -418,7 +418,7 @@ def test_token_deactivation_and_reactivation(harness: Harness) -> None:
     auth = "Bearer " + account.token
     harness.request("before-token-disable", "reactivate", 200, authorization=auth)
     for action, expected in (("deactivate", 401), ("activate", 200)):
-        response = harness.admin.get(f"/admin/token/action/{action}?pks={account.token_id}")
+        response = harness.admin.get(f"/sadm/token/action/{action}?pks={account.token_id}")
         assert response.status_code in (302, 303, 307)
         harness.request(action, "reactivate", expected, authorization=auth)
 
@@ -442,36 +442,36 @@ def test_independent_sessions_and_live_browser_permissions(harness: Harness) -> 
         trust_env=False,
     ) as browser:
         assert browser.post("/login", data=credentials).status_code == 303
-        assert browser.post("/admin/login", data=credentials).status_code == 302
+        assert browser.post("/sadm/login", data=credentials).status_code == 302
         dashboard = browser.get("/")
         assert dashboard.status_code == 200
-        assert "System health API" in dashboard.text and 'href="/admin/"' in dashboard.text
-        assert browser.get("/admin/user/list").status_code == 200
+        assert "System health API" in dashboard.text and 'href="/sadm/"' in dashboard.text
+        assert browser.get("/sadm/user/list").status_code == 200
 
-        assert browser.get("/admin/logout").is_redirect
+        assert browser.get("/sadm/logout").is_redirect
         assert browser.get("/").status_code == 200
-        assert browser.get("/admin/user/list").is_redirect
+        assert browser.get("/sadm/user/list").is_redirect
 
-        assert browser.post("/admin/login", data=credentials).status_code == 302
+        assert browser.post("/sadm/login", data=credentials).status_code == 302
         assert browser.post("/logout").status_code == 303
         assert browser.get("/").headers["location"] == "/login"
-        assert browser.get("/admin/user/list").status_code == 200
+        assert browser.get("/sadm/user/list").status_code == 200
 
         assert browser.post("/login", data=credentials).status_code == 303
         harness.update_account(account)
         dashboard = browser.get("/")
         assert dashboard.status_code == 200
-        assert "System health API" not in dashboard.text and 'href="/admin/"' not in dashboard.text
+        assert "System health API" not in dashboard.text and 'href="/sadm/"' not in dashboard.text
         for method, path in (
-            ("GET", "/admin/user/list"),
-            ("GET", "/admin/token/create"),
-            ("POST", "/admin/token/create"),
-            ("GET", f"/admin/token/action/deactivate?pks={account.token_id}"),
+            ("GET", "/sadm/user/list"),
+            ("GET", "/sadm/token/create"),
+            ("POST", "/sadm/token/create"),
+            ("GET", f"/sadm/token/action/deactivate?pks={account.token_id}"),
         ):
             response = browser.request(method, path)
             assert response.is_redirect
-            assert response.headers["location"].endswith("/admin/login")
-        assert browser.post("/admin/login", data=credentials).status_code == 400
+            assert response.headers["location"].endswith("/sadm/login")
+        assert browser.post("/sadm/login", data=credentials).status_code == 400
         rows = harness.query("SELECT is_active FROM tokens WHERE id = :id", id=account.token_id)
         assert rows[0]["is_active"]
 
@@ -480,16 +480,16 @@ def test_independent_sessions_and_live_browser_permissions(harness: Harness) -> 
 
 
 def test_inventory_sqladmin_and_browser(harness: Harness) -> None:
-    harness.admin_post("/admin/provider/create", {"name": "Example", "save": "Save"}, 302)
+    harness.admin_post("/sadm/provider/create", {"name": "Example", "save": "Save"}, 302)
     provider_id = harness.query("SELECT id FROM providers WHERE name = :name", name="Example")[0][
         "id"
     ]
-    harness.admin_post("/admin/application/create", {"name": "Database", "save": "Save"}, 302)
+    harness.admin_post("/sadm/application/create", {"name": "Database", "save": "Save"}, 302)
     app_id = harness.query("SELECT id FROM applications WHERE name = :name", name="Database")[0][
         "id"
     ]
     harness.admin_post(
-        "/admin/server/create",
+        "/sadm/server/create",
         {
             "ip_address": "192.0.2.5",
             "ssh_alias": "server-test",
@@ -503,12 +503,12 @@ def test_inventory_sqladmin_and_browser(harness: Harness) -> None:
         "id"
     ]
     harness.admin_post(
-        "/admin/server-group/create",
+        "/sadm/server-group/create",
         {"name": "Production", "servers": str(server_id), "save": "Save"},
         302,
     )
     harness.admin_post(
-        "/admin/server-domain/create",
+        "/sadm/server-domain/create",
         {"name": "Web.Example.Test.", "server": str(server_id), "save": "Save"},
         302,
     )
@@ -525,13 +525,13 @@ def test_inventory_sqladmin_and_browser(harness: Harness) -> None:
     ) as browser:
         assert (
             browser.post(
-                "/admin/login", data={"username": account.name, "password": account.password}
+                "/sadm/login", data={"username": account.name, "password": account.password}
             ).status_code
             == 302
         )
         assert (
             browser.post(
-                "/admin/server/create",
+                "/sadm/server/create",
                 data={
                     "ip_address": "192.0.2.6",
                     "ssh_alias": "other",
@@ -543,7 +543,7 @@ def test_inventory_sqladmin_and_browser(harness: Harness) -> None:
         )
         assert (
             browser.post(
-                "/admin/server-group/create", data={"name": "Unauthorized", "save": "Save"}
+                "/sadm/server-group/create", data={"name": "Unauthorized", "save": "Save"}
             ).status_code
             == 403
         )

@@ -91,7 +91,7 @@ def test_rejected_session_cookie_is_diagnosed(
         client.close()
 
 
-@pytest.mark.parametrize("admin_path", ["/admin", "/custom/admin"])
+@pytest.mark.parametrize("admin_path", ["/sadm", "/admin", "/custom/admin"])
 @pytest.mark.parametrize("scheme,https_only", [("https", True), ("http", False)])
 @pytest.mark.parametrize("root_path", ["", "/prefix"])
 def test_admin_requests_preserve_web_login(

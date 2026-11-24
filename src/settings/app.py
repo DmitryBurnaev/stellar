@@ -27,7 +27,7 @@ class AdminSettings(BaseSettings):
     username: str = Field(default="admin", min_length=1, max_length=128)
     password: SecretStr | None = None
     session_expiration_time: int = 2 * 24 * 3600
-    base_url: str = "/admin"
+    base_url: str = "/sadm"
     title: str = "Stellar Admin"
 
 
@@ -56,8 +56,6 @@ class AppSettings(BaseSettings):
     ssh_known_hosts_file: Path | None = None
     ssh_connect_timeout: int = Field(default=15, gt=0)
     ssh_command_timeout: int = Field(default=40, gt=0)
-    port_scanner_url: str | None = None
-    port_scanner_token: SecretStr | None = None
     admin: AdminSettings = Field(default_factory=AdminSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     log: LogSettings = Field(default_factory=LogSettings)

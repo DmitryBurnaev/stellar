@@ -192,6 +192,23 @@ def test_inactive_user_loses_web_and_admin_sessions(
     assert permission_client.get(base + "/user/create", follow_redirects=False).status_code == 302
 
 
+def test_inventory_admin_menu_icons(
+    permission_client: TestClient, user: User, test_app: StellarAPP
+) -> None:
+    user.is_admin = True
+    base = test_app.settings.admin.base_url
+    response = permission_client.post(
+        base + "/login", data={"username": "agent", "password": "secret"}, follow_redirects=False
+    )
+    assert response.status_code == 302
+    page = permission_client.get(base + "/")
+    stylesheet = permission_client.get(base + "/statics/css/fontawesome-all.min.css")
+    assert page.status_code == 200 and stylesheet.status_code == 200
+    for icon in ("cloud", "box", "layer-group", "server", "globe"):
+        assert f'<i class="fa-solid fa-{icon}"></i>' in page.text
+        assert f".fa-{icon}{{" in stylesheet.text
+
+
 class ExampleSystemView(BaseAPPView):
     required_permission = Permission.SYSTEM_API
     name = "Example System Feature"

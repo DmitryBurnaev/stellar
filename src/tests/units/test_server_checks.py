@@ -1,14 +1,12 @@
-"""Collection and external scanner behavior."""
+"""SSH collection behavior."""
 
 from pathlib import Path
 import os
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
-from pydantic import SecretStr
 import pytest
 
-from src.modules import port_scanner, server_checks, ssh
+from src.modules import server_checks, ssh
 from src.modules.ssh import SSHError
 from src.settings.app import AppSettings
 
@@ -70,40 +68,6 @@ async def test_collection_keeps_successful_sections_when_docker_fails(
     assert result["errors"] == {"images": "Could not collect this section"}
 
 
-async def test_scanner_submit_and_result(
-    app_settings_test: AppSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    app_settings_test.port_scanner_url = "https://scanner.example.test"
-    app_settings_test.port_scanner_token = SecretStr("test-token")
-    calls: list[httpx.Request] = []
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        assert request.headers["authorization"] == "Bearer test-token"
-        if request.method == "POST":
-            assert request.headers["idempotency-key"] == "stable-key"
-            return httpx.Response(202, json={"id": "scan-1"})
-        return httpx.Response(
-            200,
-            json={
-                "id": "scan-1",
-                "address": "192.0.2.1",
-                "status": "succeeded",
-                "open_tcp_ports": [443, 22, 22],
-            },
-        )
-
-    client = httpx.AsyncClient
-    monkeypatch.setattr(
-        "src.modules.port_scanner.httpx.AsyncClient",
-        lambda **kwargs: client(transport=httpx.MockTransport(handle)),
-    )
-    scan_id = await port_scanner.submit_scan("192.0.2.1", "stable-key", app_settings_test)
-    result = await port_scanner.get_scan(scan_id, "192.0.2.1", app_settings_test)
-    assert result["open_tcp_ports"] == [22, 443]
-    assert len(calls) == 2
-
-
 async def test_ssh_unavailable_does_not_claim_success(
     app_settings_test: AppSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -141,36 +105,6 @@ async def test_ssh_uses_known_hosts_and_redacts_remote_errors(
             config_file=Path("/config"),
             known_hosts_file=Path("/known_hosts"),
         )
-
-
-@pytest.mark.parametrize(
-    "status,ports", [("succeeded", [True]), ("succeeded", [65536]), (["bad"], [])]
-)
-async def test_scanner_rejects_malformed_responses(
-    app_settings_test: AppSettings,
-    monkeypatch: pytest.MonkeyPatch,
-    status: object,
-    ports: list[object],
-) -> None:
-    app_settings_test.port_scanner_url = "https://scanner.example.test"
-    app_settings_test.port_scanner_token = SecretStr("test-token")
-    client = httpx.AsyncClient
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(
-            200,
-            json={
-                "id": "scan-1",
-                "address": "192.0.2.1",
-                "status": status,
-                "open_tcp_ports": ports,
-            },
-        )
-    )
-    monkeypatch.setattr(
-        "src.modules.port_scanner.httpx.AsyncClient", lambda **kwargs: client(transport=transport)
-    )
-    with pytest.raises(port_scanner.ScannerError):
-        await port_scanner.get_scan("scan-1", "192.0.2.1", app_settings_test)
 
 
 async def test_real_ssh_collection(app_settings_test: AppSettings, tmp_path: Path) -> None:
